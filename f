@@ -1,0 +1,1 @@
+Make a function Last-RestartTimestamp.
