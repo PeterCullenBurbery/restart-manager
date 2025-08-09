@@ -1,0 +1,54 @@
+function Last-RestartTimestamp {
+    <#
+    .SYNOPSIS
+        Shows the most recent Windows restart timestamp.
+
+    .DESCRIPTION
+        Checks Event ID 1074 (planned restart) first; if none in the last 90 days,
+        falls back to last boot time from Win32_OperatingSystem.
+        Outputs both local time and UTC.
+
+    .PARAMETER Days
+        How many days back to search the event log for planned restarts.
+        Defaults to 90.
+
+    .PARAMETER ExportCsv
+        Path to export the result to CSV. If omitted, no CSV is written.
+    #>
+    param(
+        [int]$Days = 90,
+        [string]$ExportCsv
+    )
+
+    # Get the most recent planned restart
+    $startTime = (Get-Date).AddDays(-$Days)
+    $plannedRestart = Get-WinEvent -FilterHashtable @{
+        LogName   = 'System'
+        Id        = 1074
+        StartTime = $startTime
+    } -MaxEvents 1 -ErrorAction SilentlyContinue |
+    Sort-Object TimeCreated -Descending |
+    Select-Object -First 1
+
+    if ($plannedRestart) {
+        $lastRestart = $plannedRestart.TimeCreated
+        $source      = "Planned restart (Event 1074)"
+    }
+    else {
+        # Fallback: last boot time
+        $lastRestart = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+        $source      = "Boot time (no planned restart found)"
+    }
+
+    $result = [PSCustomObject]@{
+        Source        = $source
+        Local_Time    = $lastRestart.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+        UTC_Time      = $lastRestart.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")
+    }
+
+    if ($ExportCsv) {
+        $result | Export-Csv -Path $ExportCsv -NoTypeInformation -Encoding UTF8
+    }
+
+    return $result
+}
